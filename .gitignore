@@ -1,0 +1,11 @@
+Brunner Data/
+.DS_Store
+__pycache__/
+*.pyc
+
+* Data/
+
+* Data/
+
+Code/freestyle_graphs/
+Code/stroke_analysis_results.csv
