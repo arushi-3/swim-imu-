@@ -30,6 +30,9 @@ from sklearn.metrics import (
     accuracy_score,
     classification_report,
     confusion_matrix,
+    precision_score,
+    recall_score,
+    f1_score,
 )
 
 
@@ -83,7 +86,7 @@ GYRO_COLUMNS = [
 TRANSITION_RANGES = [
     (0.0, 12.1),
     (60.9, 66.9),
-    (110.3, 124.2),
+    (115.2, 124.2),
 ]
 
 
@@ -134,6 +137,35 @@ NUMBER_OF_TREES = 100
 MAX_TREE_DEPTH = 4
 
 MIN_SAMPLES_LEAF = 3
+
+
+# ============================================================
+# CLEAN-PROBABILITY THRESHOLD SETTINGS
+# ============================================================
+
+# The Random Forest outputs P(clean freestyle).
+#
+# A window is classified as:
+#   clean freestyle if P(clean) >= threshold
+#   transition      if P(clean) < threshold
+#
+# Higher thresholds make the classifier more cautious about
+# calling a window clean and therefore usually increase
+# transition recall at the cost of some transition precision.
+#
+# IMPORTANT:
+# These thresholds are tested ONLY on the validation set.
+# The best threshold is then used once on the test set.
+
+CLEAN_PROBABILITY_THRESHOLDS = [
+    0.50,
+    0.55,
+    0.60,
+    0.65,
+    0.70,
+    0.75,
+    0.80,
+]
 
 
 # ============================================================
@@ -842,14 +874,280 @@ def train_classifier(
 
 
 # ============================================================
-# EVALUATE MODEL
+# CLEAN-SWIMMING PROBABILITIES
+# ============================================================
+
+def get_clean_probabilities(
+    model,
+    dataframe,
+    feature_columns
+):
+    """
+    Return P(clean freestyle) for every window.
+    """
+
+    X = dataframe[
+        feature_columns
+    ]
+
+    probabilities = model.predict_proba(
+        X
+    )
+
+    clean_index = list(
+        model.classes_
+    ).index(1)
+
+    return probabilities[
+        :,
+        clean_index
+    ]
+
+
+# ============================================================
+# APPLY A CLEAN-PROBABILITY THRESHOLD
+# ============================================================
+
+def predictions_from_clean_probability(
+    clean_probabilities,
+    clean_threshold
+):
+    """
+    Convert clean-swimming probabilities into class labels.
+
+    1 = clean freestyle
+    0 = transition / turn / noise
+
+    A higher clean_threshold means the model must be more
+    confident before calling a window clean.
+    """
+
+    return (
+        clean_probabilities
+        >= clean_threshold
+    ).astype(int)
+
+
+# ============================================================
+# TEST PROBABILITY THRESHOLDS ON VALIDATION DATA
+# ============================================================
+
+def test_probability_thresholds(
+    model,
+    dataframe,
+    feature_columns
+):
+    """
+    Compare clean-probability thresholds using ONLY the
+    validation set.
+
+    The transition class is label 0, so transition precision,
+    recall and F1 are calculated with pos_label=0.
+
+    Returns a DataFrame containing the results.
+    """
+
+    if len(dataframe) == 0:
+
+        raise ValueError(
+            "Validation dataset is empty."
+        )
+
+    y = dataframe[
+        "label"
+    ].to_numpy()
+
+    clean_probabilities = get_clean_probabilities(
+        model,
+        dataframe,
+        feature_columns
+    )
+
+    rows = []
+
+    print()
+    print("=" * 78)
+    print("CLEAN-PROBABILITY THRESHOLD TEST - VALIDATION SET ONLY")
+    print("=" * 78)
+    print()
+    print(
+        f"{'Threshold':<12}"
+        f"{'Accuracy':<12}"
+        f"{'Trans Precision':<18}"
+        f"{'Trans Recall':<15}"
+        f"{'Trans F1':<12}"
+        f"{'Pred Trans':<12}"
+    )
+
+    for clean_threshold in CLEAN_PROBABILITY_THRESHOLDS:
+
+        predictions = predictions_from_clean_probability(
+            clean_probabilities,
+            clean_threshold
+        )
+
+        accuracy = accuracy_score(
+            y,
+            predictions
+        )
+
+        transition_precision = precision_score(
+            y,
+            predictions,
+            pos_label=0,
+            zero_division=0
+        )
+
+        transition_recall = recall_score(
+            y,
+            predictions,
+            pos_label=0,
+            zero_division=0
+        )
+
+        transition_f1 = f1_score(
+            y,
+            predictions,
+            pos_label=0,
+            zero_division=0
+        )
+
+        predicted_transition_count = int(
+            np.sum(
+                predictions == 0
+            )
+        )
+
+        rows.append(
+            {
+                "clean_probability_threshold":
+                    clean_threshold,
+
+                "accuracy":
+                    accuracy,
+
+                "transition_precision":
+                    transition_precision,
+
+                "transition_recall":
+                    transition_recall,
+
+                "transition_f1":
+                    transition_f1,
+
+                "predicted_transition_windows":
+                    predicted_transition_count,
+            }
+        )
+
+        print(
+            f"{clean_threshold:<12.2f}"
+            f"{accuracy:<12.3f}"
+            f"{transition_precision:<18.3f}"
+            f"{transition_recall:<15.3f}"
+            f"{transition_f1:<12.3f}"
+            f"{predicted_transition_count:<12d}"
+        )
+
+    return pd.DataFrame(
+        rows
+    )
+
+
+# ============================================================
+# CHOOSE THRESHOLD FROM VALIDATION RESULTS
+# ============================================================
+
+def choose_probability_threshold(
+    threshold_results
+):
+    """
+    Choose the threshold using validation data only.
+
+    Primary objective:
+        highest transition F1
+
+    Tie breakers:
+        1. higher transition recall
+        2. higher transition precision
+        3. lower threshold
+
+    The test set is NOT used for this choice.
+    """
+
+    ranked = (
+        threshold_results
+        .sort_values(
+            by=[
+                "transition_f1",
+                "transition_recall",
+                "transition_precision",
+                "clean_probability_threshold",
+            ],
+            ascending=[
+                False,
+                False,
+                False,
+                True,
+            ]
+        )
+        .reset_index(
+            drop=True
+        )
+    )
+
+    best = ranked.iloc[0]
+
+    clean_threshold = float(
+        best[
+            "clean_probability_threshold"
+        ]
+    )
+
+    print()
+    print("=" * 50)
+    print("SELECTED CLEAN-PROBABILITY THRESHOLD")
+    print("=" * 50)
+
+    print(
+        f"Threshold: "
+        f"{clean_threshold:.2f}"
+    )
+
+    print(
+        f"Validation transition precision: "
+        f"{best['transition_precision']:.3f}"
+    )
+
+    print(
+        f"Validation transition recall: "
+        f"{best['transition_recall']:.3f}"
+    )
+
+    print(
+        f"Validation transition F1: "
+        f"{best['transition_f1']:.3f}"
+    )
+
+    print()
+    print(
+        "This threshold was selected using the "
+        "VALIDATION set only."
+    )
+
+    return clean_threshold
+
+
+# ============================================================
+# EVALUATE MODEL AT A CHOSEN THRESHOLD
 # ============================================================
 
 def evaluate_model(
     model,
     dataframe,
     feature_columns,
-    name
+    name,
+    clean_threshold
 ):
 
     if len(dataframe) == 0:
@@ -860,16 +1158,19 @@ def evaluate_model(
 
         return
 
-    X = dataframe[
-        feature_columns
-    ]
-
     y = dataframe[
         "label"
-    ]
+    ].to_numpy()
 
-    predictions = model.predict(
-        X
+    clean_probabilities = get_clean_probabilities(
+        model,
+        dataframe,
+        feature_columns
+    )
+
+    predictions = predictions_from_clean_probability(
+        clean_probabilities,
+        clean_threshold
     )
 
     print()
@@ -877,17 +1178,22 @@ def evaluate_model(
     print(name)
     print("=" * 50)
 
+    print(
+        f"\nClean-probability threshold: "
+        f"{clean_threshold:.2f}"
+    )
+
     print()
     print("Actual class counts:")
 
     print(
         f"Transition (0): "
-        f"{(y == 0).sum()}"
+        f"{np.sum(y == 0)}"
     )
 
     print(
         f"Clean freestyle (1): "
-        f"{(y == 1).sum()}"
+        f"{np.sum(y == 1)}"
     )
 
     print()
@@ -895,12 +1201,12 @@ def evaluate_model(
 
     print(
         f"Transition (0): "
-        f"{(predictions == 0).sum()}"
+        f"{np.sum(predictions == 0)}"
     )
 
     print(
         f"Clean freestyle (1): "
-        f"{(predictions == 1).sum()}"
+        f"{np.sum(predictions == 1)}"
     )
 
     print()
@@ -940,6 +1246,7 @@ def evaluate_model(
     )
 
 
+
 # ============================================================
 # PREDICT ALL WINDOWS
 # ============================================================
@@ -947,37 +1254,35 @@ def evaluate_model(
 def predict_all_windows(
     model,
     feature_df,
-    feature_columns
+    feature_columns,
+    clean_threshold
 ):
 
     output = feature_df.copy()
 
-    X = output[
+    clean_probabilities = get_clean_probabilities(
+        model,
+        output,
         feature_columns
-    ]
-
-    output[
-        "prediction"
-    ] = model.predict(
-        X
     )
-
-    probabilities = model.predict_proba(
-        X
-    )
-
-    clean_index = list(
-        model.classes_
-    ).index(1)
 
     output[
         "clean_probability"
-    ] = probabilities[
-        :,
-        clean_index
-    ]
+    ] = clean_probabilities
+
+    output[
+        "prediction"
+    ] = predictions_from_clean_probability(
+        clean_probabilities,
+        clean_threshold
+    )
+
+    output[
+        "clean_probability_threshold"
+    ] = clean_threshold
 
     return output
+
 
 
 # ============================================================
@@ -1021,7 +1326,8 @@ def create_prediction_plot(
     df,
     prediction_df,
     csv_path,
-    output_dir
+    output_dir,
+    clean_threshold
 ):
 
     figure = go.Figure()
@@ -1078,7 +1384,10 @@ def create_prediction_plot(
     # --------------------------------------------------------
     # RANDOM FOREST PREDICTED TRANSITIONS
     #
-    # prediction == 0 means transition
+    # prediction == 0 means transition.
+    #
+    # These predictions use the threshold selected from the
+    # validation set rather than model.predict()'s default 0.50.
     # --------------------------------------------------------
 
     for _, row in prediction_df.iterrows():
@@ -1108,7 +1417,10 @@ def create_prediction_plot(
                 color="blue",
                 symbol="square"
             ),
-            name="RF predicted transition"
+            name=(
+                "RF predicted transition "
+                f"(clean threshold={clean_threshold:.2f})"
+            )
         )
     )
 
@@ -1121,6 +1433,10 @@ def create_prediction_plot(
         title=(
             f"Random Forest transition classification: "
             f"{csv_path.name}"
+            f"<br><sup>"
+            f"Clean probability threshold = "
+            f"{clean_threshold:.2f}"
+            f"</sup>"
         ),
 
         xaxis_title="Time (seconds)",
@@ -1135,7 +1451,7 @@ def create_prediction_plot(
 
         legend=dict(
             orientation="h",
-            y=1.05,
+            y=1.07,
             x=0
         )
     )
@@ -1156,6 +1472,7 @@ def create_prediction_plot(
     )
 
     return output_file
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -1372,25 +1689,52 @@ def main():
     )
 
     # --------------------------------------------------------
-    # VALIDATE
+    # TEST CLEAN-PROBABILITY THRESHOLDS ON VALIDATION DATA
+    # --------------------------------------------------------
+
+    threshold_results = test_probability_thresholds(
+        model,
+        validation_df,
+        feature_columns
+    )
+
+    threshold_output = (
+        args.output_dir
+        / "threshold_results.csv"
+    )
+
+    threshold_results.to_csv(
+        threshold_output,
+        index=False
+    )
+
+    # Select the best threshold using validation data only.
+    clean_threshold = choose_probability_threshold(
+        threshold_results
+    )
+
+    # --------------------------------------------------------
+    # VALIDATE USING THE SELECTED THRESHOLD
     # --------------------------------------------------------
 
     evaluate_model(
         model,
         validation_df,
         feature_columns,
-        "VALIDATION RESULTS"
+        "VALIDATION RESULTS",
+        clean_threshold
     )
 
     # --------------------------------------------------------
-    # TEST
+    # TEST ONCE USING THE VALIDATION-SELECTED THRESHOLD
     # --------------------------------------------------------
 
     evaluate_model(
         model,
         test_df,
         feature_columns,
-        "TEST RESULTS"
+        "TEST RESULTS",
+        clean_threshold
     )
 
     # --------------------------------------------------------
@@ -1400,7 +1744,8 @@ def main():
     prediction_df = predict_all_windows(
         model,
         feature_df,
-        feature_columns
+        feature_columns,
+        clean_threshold
     )
 
     prediction_output = (
@@ -1454,7 +1799,8 @@ def main():
         df,
         prediction_df,
         csv_path,
-        args.output_dir
+        args.output_dir,
+        clean_threshold
     )
 
     # --------------------------------------------------------
@@ -1482,6 +1828,18 @@ def main():
     print(
         f"Feature importance:\n"
         f"{importance_output}"
+    )
+
+    print()
+    print(
+        f"Threshold comparison:\n"
+        f"{threshold_output}"
+    )
+
+    print()
+    print(
+        f"Selected clean-probability threshold:\n"
+        f"{clean_threshold:.2f}"
     )
 
     print()
