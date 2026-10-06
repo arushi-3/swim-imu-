@@ -18,70 +18,128 @@ DATA_DIR = (
     / "processed_30hz_relabeled"
 )
 
-LABEL_FILE = (
+TRANSITION_LABEL_FILE = (
     REPO_ROOT
     / "Code"
     / "labels"
     / "transition_ranges.csv"
 )
 
-OUTPUT_FILE = (
+LABEL_COVERAGE_FILE = (
+    REPO_ROOT
+    / "Code"
+    / "labels"
+    / "label_coverage.csv"
+)
+
+MANIFEST_OUTPUT_FILE = (
     REPO_ROOT
     / "Code"
     / "labels"
     / "recording_manifest.csv"
 )
 
+PARTICIPANT_OUTPUT_FILE = (
+    REPO_ROOT
+    / "Code"
+    / "labels"
+    / "participant_summary.csv"
+)
+
 
 # ============================================================
-# LOAD TRANSITION LABELS
+# LOAD LABEL FILES
 # ============================================================
 
-if not LABEL_FILE.exists():
-    raise FileNotFoundError(
-        f"Transition label file not found:\n{LABEL_FILE}"
-    )
+transition_labels = pd.read_csv(
+    TRANSITION_LABEL_FILE
+)
 
-labels = pd.read_csv(LABEL_FILE)
+coverage = pd.read_csv(
+    LABEL_COVERAGE_FILE
+)
 
-required_columns = {
-    "participant",
-    "file",
-    "start_s",
-    "end_s",
-}
 
-missing_columns = required_columns - set(labels.columns)
+# Make participant IDs consistent
+transition_labels["participant"] = (
+    transition_labels["participant"]
+    .astype(str)
+)
 
-if missing_columns:
-    raise ValueError(
-        f"transition_ranges.csv is missing columns: "
-        f"{missing_columns}"
-    )
-
-# Make participant IDs strings so comparisons are consistent.
-labels["participant"] = (
-    labels["participant"]
+coverage["participant"] = (
+    coverage["participant"]
     .astype(str)
 )
 
 
 # ============================================================
-# FIND ALL FREESTYLE RECORDINGS
+# HELPER: MERGE COVERAGE RANGES
+# ============================================================
+
+def merge_ranges(ranges):
+    """
+    Merge overlapping labeled time ranges.
+
+    Example:
+
+        [(0, 130), (100, 200)]
+
+    becomes:
+
+        [(0, 200)]
+    """
+
+    if not ranges:
+        return []
+
+    ranges = sorted(ranges)
+
+    merged = [
+        list(ranges[0])
+    ]
+
+    for start, end in ranges[1:]:
+
+        previous = merged[-1]
+
+        if start <= previous[1]:
+
+            previous[1] = max(
+                previous[1],
+                end
+            )
+
+        else:
+
+            merged.append(
+                [start, end]
+            )
+
+    return [
+        tuple(x)
+        for x in merged
+    ]
+
+
+# ============================================================
+# FIND ALL FREESTYLE FILES
 # ============================================================
 
 freestyle_files = sorted(
-    DATA_DIR.glob("*/Freestyle_*.csv")
+    DATA_DIR.glob(
+        "*/Freestyle_*.csv"
+    )
 )
 
 print()
 print(
-    f"Found {len(freestyle_files)} freestyle recordings."
+    f"Found {len(freestyle_files)} "
+    f"freestyle recordings."
 )
 
 
 # ============================================================
-# BUILD MANIFEST
+# BUILD RECORDING MANIFEST
 # ============================================================
 
 rows = []
@@ -92,11 +150,13 @@ for csv_path in freestyle_files:
     filename = csv_path.name
 
     print(
-        f"Reading participant {participant}: "
-        f"{filename}"
+        f"Reading participant "
+        f"{participant}: {filename}"
     )
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(
+        csv_path
+    )
 
     num_samples = len(df)
 
@@ -124,57 +184,197 @@ for csv_path in freestyle_files:
             ) / 1_000_000_000
 
     # --------------------------------------------------------
-    # CHECK WHETHER THIS RECORDING HAS LABELS
+    # TRANSITION RANGES
     # --------------------------------------------------------
 
-    recording_labels = labels[
-        (labels["participant"] == participant)
-        & (labels["file"] == filename)
+    file_transitions = transition_labels[
+        (
+            transition_labels["participant"]
+            == participant
+        )
+        &
+        (
+            transition_labels["file"]
+            == filename
+        )
     ]
 
-    number_of_transitions = len(
-        recording_labels
-    )
-
-    labeled = (
-        "yes"
-        if number_of_transitions > 0
-        else "no"
+    num_transition_ranges = len(
+        file_transitions
     )
 
     # --------------------------------------------------------
-    # SAVE ROW
+    # LABEL COVERAGE
+    # --------------------------------------------------------
+
+    file_coverage = coverage[
+        (
+            coverage["participant"]
+            == participant
+        )
+        &
+        (
+            coverage["file"]
+            == filename
+        )
+    ]
+
+    coverage_ranges = []
+
+    for _, row in file_coverage.iterrows():
+
+        coverage_ranges.append(
+            (
+                float(
+                    row["labeled_start_s"]
+                ),
+                float(
+                    row["labeled_end_s"]
+                ),
+            )
+        )
+
+    coverage_ranges = merge_ranges(
+        coverage_ranges
+    )
+
+    labeled_duration_s = sum(
+        end - start
+        for start, end
+        in coverage_ranges
+    )
+
+    # --------------------------------------------------------
+    # LABEL STATUS
+    # --------------------------------------------------------
+
+    if len(coverage_ranges) == 0:
+
+        label_status = "unlabeled"
+
+    else:
+
+        first_start = (
+            coverage_ranges[0][0]
+        )
+
+        last_end = (
+            coverage_ranges[-1][1]
+        )
+
+        # Allow a small tolerance for timestamp differences.
+        tolerance_s = 0.5
+
+        covers_start = (
+            first_start
+            <= tolerance_s
+        )
+
+        covers_end = (
+            duration_s is not None
+            and last_end
+            >= duration_s - tolerance_s
+        )
+
+        # Full coverage should also not contain gaps.
+        one_continuous_range = (
+            len(coverage_ranges) == 1
+        )
+
+        if (
+            covers_start
+            and covers_end
+            and one_continuous_range
+        ):
+
+            label_status = "full"
+
+        else:
+
+            label_status = "partial"
+
+    # --------------------------------------------------------
+    # PERCENT OF RECORDING LABELED
+    # --------------------------------------------------------
+
+    if (
+        duration_s is not None
+        and duration_s > 0
+    ):
+
+        percent_labeled = (
+            100
+            * labeled_duration_s
+            / duration_s
+        )
+
+        percent_labeled = min(
+            percent_labeled,
+            100
+        )
+
+    else:
+
+        percent_labeled = 0
+
+    # --------------------------------------------------------
+    # SAVE RECORDING
     # --------------------------------------------------------
 
     rows.append(
         {
-            "participant": participant,
-            "file": filename,
-            "duration_s": (
-                round(duration_s, 2)
-                if duration_s is not None
-                else None
-            ),
-            "num_samples": num_samples,
-            "labeled": labeled,
+            "participant":
+                participant,
+
+            "file":
+                filename,
+
+            "duration_s":
+                round(
+                    duration_s,
+                    2
+                )
+                if duration_s
+                is not None
+                else None,
+
+            "num_samples":
+                num_samples,
+
+            "label_status":
+                label_status,
+
+            "labeled_duration_s":
+                round(
+                    labeled_duration_s,
+                    2
+                ),
+
+            "percent_labeled":
+                round(
+                    percent_labeled,
+                    1
+                ),
+
             "num_transition_ranges":
-                number_of_transitions,
+                num_transition_ranges,
         }
     )
 
 
 # ============================================================
-# SAVE MANIFEST
+# RECORDING MANIFEST
 # ============================================================
 
-manifest = pd.DataFrame(rows)
+manifest = pd.DataFrame(
+    rows
+)
 
-# Sort numerically by participant
-manifest["participant_number"] = (
-    pd.to_numeric(
-        manifest["participant"],
-        errors="coerce"
-    )
+manifest[
+    "participant_number"
+] = pd.to_numeric(
+    manifest["participant"],
+    errors="coerce"
 )
 
 manifest = manifest.sort_values(
@@ -191,89 +391,201 @@ manifest = manifest.drop(
 )
 
 manifest.to_csv(
-    OUTPUT_FILE,
+    MANIFEST_OUTPUT_FILE,
     index=False
 )
 
 
 # ============================================================
-# SUMMARY
+# PARTICIPANT SUMMARY
 # ============================================================
 
-number_of_recordings = len(
-    manifest
+participant_summary = (
+    manifest.groupby(
+        "participant"
+    )
+    .agg(
+        recordings=(
+            "file",
+            "count"
+        ),
+
+        total_duration_s=(
+            "duration_s",
+            "sum"
+        ),
+
+        labeled_duration_s=(
+            "labeled_duration_s",
+            "sum"
+        ),
+
+        transition_ranges=(
+            "num_transition_ranges",
+            "sum"
+        ),
+
+        full_recordings=(
+            "label_status",
+            lambda x:
+            (x == "full").sum()
+        ),
+
+        partial_recordings=(
+            "label_status",
+            lambda x:
+            (x == "partial").sum()
+        ),
+
+        unlabeled_recordings=(
+            "label_status",
+            lambda x:
+            (x == "unlabeled").sum()
+        ),
+    )
+    .reset_index()
 )
 
-number_of_participants = (
-    manifest["participant"]
-    .nunique()
+participant_summary[
+    "participant_number"
+] = pd.to_numeric(
+    participant_summary[
+        "participant"
+    ],
+    errors="coerce"
 )
 
-number_labeled = (
-    manifest["labeled"]
-    == "yes"
-).sum()
+participant_summary = (
+    participant_summary
+    .sort_values(
+        "participant_number"
+    )
+    .drop(
+        columns=[
+            "participant_number"
+        ]
+    )
+)
 
-number_unlabeled = (
-    manifest["labeled"]
-    == "no"
-).sum()
+participant_summary[
+    "total_duration_s"
+] = (
+    participant_summary[
+        "total_duration_s"
+    ]
+    .round(2)
+)
 
+participant_summary[
+    "labeled_duration_s"
+] = (
+    participant_summary[
+        "labeled_duration_s"
+    ]
+    .round(2)
+)
+
+participant_summary.to_csv(
+    PARTICIPANT_OUTPUT_FILE,
+    index=False
+)
+
+
+# ============================================================
+# DATASET SUMMARY
+# ============================================================
 
 print()
-print("=" * 60)
+print("=" * 70)
 print("DATASET SUMMARY")
-print("=" * 60)
+print("=" * 70)
 
 print(
     f"Freestyle recordings: "
-    f"{number_of_recordings}"
+    f"{len(manifest)}"
 )
 
 print(
     f"Participants with freestyle: "
-    f"{number_of_participants}"
+    f"{manifest['participant'].nunique()}"
 )
 
 print(
-    f"Labeled recordings: "
-    f"{number_labeled}"
+    f"Fully labeled recordings: "
+    f"{(manifest['label_status'] == 'full').sum()}"
+)
+
+print(
+    f"Partially labeled recordings: "
+    f"{(manifest['label_status'] == 'partial').sum()}"
 )
 
 print(
     f"Unlabeled recordings: "
-    f"{number_unlabeled}"
+    f"{(manifest['label_status'] == 'unlabeled').sum()}"
 )
 
-print()
 print(
-    f"Manifest saved to:\n"
-    f"{OUTPUT_FILE}"
+    f"Total labeled duration: "
+    f"{manifest['labeled_duration_s'].sum() / 60:.2f} minutes"
 )
 
 
 # ============================================================
-# SHOW CURRENTLY LABELED FILES
+# CURRENT LABELED RECORDINGS
 # ============================================================
 
 print()
-print("=" * 60)
+print("=" * 70)
 print("CURRENTLY LABELED RECORDINGS")
-print("=" * 60)
+print("=" * 70)
 
-labeled_files = manifest[
-    manifest["labeled"] == "yes"
+currently_labeled = manifest[
+    manifest["label_status"]
+    != "unlabeled"
 ]
 
 print(
-    labeled_files[
+    currently_labeled[
         [
             "participant",
             "file",
             "duration_s",
+            "label_status",
+            "labeled_duration_s",
+            "percent_labeled",
             "num_transition_ranges",
         ]
     ].to_string(
         index=False
     )
+)
+
+
+# ============================================================
+# PARTICIPANT SUMMARY
+# ============================================================
+
+print()
+print("=" * 70)
+print("PARTICIPANT SUMMARY")
+print("=" * 70)
+
+print(
+    participant_summary.to_string(
+        index=False
+    )
+)
+
+
+print()
+print(
+    f"Recording manifest saved to:\n"
+    f"{MANIFEST_OUTPUT_FILE}"
+)
+
+print()
+print(
+    f"Participant summary saved to:\n"
+    f"{PARTICIPANT_OUTPUT_FILE}"
 )
