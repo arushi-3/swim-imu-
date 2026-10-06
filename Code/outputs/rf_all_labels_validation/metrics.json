@@ -1,0 +1,64 @@
+{
+  "train": {
+    "windows": 2735,
+    "accuracy": 0.9711151736745887,
+    "confusion_matrix": [
+      [
+        1055,
+        57
+      ],
+      [
+        22,
+        1601
+      ]
+    ],
+    "transition_precision": 0.9795728876508821,
+    "transition_recall": 0.9487410071942446,
+    "transition_f1": 0.9639104613978986,
+    "clean_f1": 0.9759219750076197,
+    "transition_windows": 1112,
+    "clean_windows": 1623
+  },
+  "validation": {
+    "windows": 516,
+    "accuracy": 0.9903100775193798,
+    "confusion_matrix": [
+      [
+        290,
+        5
+      ],
+      [
+        0,
+        221
+      ]
+    ],
+    "transition_precision": 1.0,
+    "transition_recall": 0.9830508474576272,
+    "transition_f1": 0.9914529914529915,
+    "clean_f1": 0.9888143176733781,
+    "transition_windows": 295,
+    "clean_windows": 221
+  },
+  "test": {
+    "windows": 508,
+    "accuracy": 0.9488188976377953,
+    "confusion_matrix": [
+      [
+        141,
+        13
+      ],
+      [
+        13,
+        341
+      ]
+    ],
+    "transition_precision": 0.9155844155844156,
+    "transition_recall": 0.9155844155844156,
+    "transition_f1": 0.9155844155844156,
+    "clean_f1": 0.963276836158192,
+    "transition_windows": 154,
+    "clean_windows": 354
+  },
+  "note": "Train scores are in-sample. Validation scores were used to select the threshold. Test scores use held-out swimmers; overlapping windows are not independent observations.",
+  "clean_probability_threshold": 0.65
+}
