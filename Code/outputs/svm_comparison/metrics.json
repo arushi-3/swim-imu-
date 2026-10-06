@@ -1,0 +1,62 @@
+{
+  "train": {
+    "windows": 2735,
+    "accuracy": 0.9912248628884827,
+    "confusion_matrix": [
+      [
+        1088,
+        24
+      ],
+      [
+        0,
+        1623
+      ]
+    ],
+    "transition_precision": 1.0,
+    "transition_recall": 0.9784172661870504,
+    "transition_f1": 0.9890909090909091,
+    "clean_f1": 0.9926605504587156,
+    "transition_windows": 1112,
+    "clean_windows": 1623
+  },
+  "validation": {
+    "windows": 516,
+    "accuracy": 0.9941860465116279,
+    "confusion_matrix": [
+      [
+        292,
+        3
+      ],
+      [
+        0,
+        221
+      ]
+    ],
+    "transition_precision": 1.0,
+    "transition_recall": 0.9898305084745763,
+    "transition_f1": 0.9948892674616695,
+    "clean_f1": 0.9932584269662922,
+    "transition_windows": 295,
+    "clean_windows": 221
+  },
+  "test": {
+    "windows": 508,
+    "accuracy": 0.9291338582677166,
+    "confusion_matrix": [
+      [
+        144,
+        10
+      ],
+      [
+        26,
+        328
+      ]
+    ],
+    "transition_precision": 0.8470588235294118,
+    "transition_recall": 0.935064935064935,
+    "transition_f1": 0.8888888888888888,
+    "clean_f1": 0.9479768786127167,
+    "transition_windows": 154,
+    "clean_windows": 354
+  }
+}
