@@ -1,0 +1,5 @@
+variant,model,split,participant,tolerance_s,total_windows,excluded_boundary_windows,boundary_errors,windows,accuracy,confusion_matrix,transition_precision,transition_recall,transition_f1,clean_f1,transition_windows,clean_windows,clean_recall,clean_precision
+Baseline (54 features),RF,test,all,1.0,508,41,14,467,0.974304068522484,"[[120, 0], [12, 335]]",0.9090909090909092,1.0,0.9523809523809524,0.9824046920821116,120,347,,
+Baseline (54 features),SVM,test,all,1.0,508,41,11,467,0.9464668094218416,"[[120, 0], [25, 322]]",0.8275862068965517,1.0,0.9056603773584906,0.9626307922272048,120,347,,
+All-axis temporal features (84),RF,test,all,1.0,508,41,17,467,0.9828693790149892,"[[119, 1], [7, 340]]",0.9444444444444444,0.9916666666666668,0.967479674796748,0.9883720930232558,120,347,,
+All-axis temporal features (84),SVM,test,all,1.0,508,41,10,467,0.8779443254817987,"[[120, 0], [57, 290]]",0.6779661016949152,1.0,0.8080808080808081,0.9105180533751962,120,347,,

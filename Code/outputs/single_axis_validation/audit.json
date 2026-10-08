@@ -1,0 +1,16 @@
+{
+  "errors": [],
+  "warnings": [
+    "6/Freestyle_1527268862333.csv: overlapping transition ranges; sample labels use their union",
+    "11/Freestyle_1526814573646.csv: coverage end rounded past last sample by 0.0033s",
+    "20/Freestyle_1526898327587.csv: coverage end rounded past last sample by 0.0000s"
+  ],
+  "labeled_recordings": 31,
+  "participants": 30,
+  "transition_ranges": 78,
+  "split_swimmers": {
+    "test": 4,
+    "train": 22,
+    "validation": 4
+  }
+}
