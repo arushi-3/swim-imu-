@@ -1,0 +1,38 @@
+{
+  "mean": [
+    -4.130605697631836,
+    -1.5930099487304688,
+    4.433091163635254,
+    -0.8006592392921448,
+    -0.050064899027347565,
+    0.030456019565463066
+  ],
+  "std": [
+    8.729830741882324,
+    7.174332141876221,
+    5.915404319763184,
+    2.667442560195923,
+    2.6639931201934814,
+    2.5684125423431396
+  ],
+  "label_hashes": {
+    "transition_ranges.csv": "e10fbc6952e79df37b3987d3a4d9a6f8bff09637166207a668fd296b9efa99c9",
+    "label_coverage.csv": "4d2375062c4919725e94dff393bcffe5f98d0f77f1b72b9815d3260b3c0e9b72",
+    "participant_split.csv": "f94aea8fa62ad72f72d36b2cc3c38ddb1a37c512890a2a87ef628357ebddaf0a"
+  },
+  "channels": [
+    "ACC_0",
+    "ACC_1",
+    "ACC_2",
+    "GYRO_0",
+    "GYRO_1",
+    "GYRO_2"
+  ],
+  "input_samples": 240,
+  "stride_samples": 120,
+  "positive_weight": 1.5846754057428214,
+  "best_epoch": 39,
+  "seed": 42,
+  "torch_version": "2.8.0",
+  "clean_threshold": 0.65
+}

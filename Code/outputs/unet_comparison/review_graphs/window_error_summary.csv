@@ -1,0 +1,5 @@
+participant,recording,total_windows,actual_transition_windows,actual_clean_windows,correctly_detected_transition_windows,correctly_detected_clean_windows,missed_transition_windows,clean_windows_flagged_transition,errors_near_boundary_1s,errors_away_from_boundary_1s,accuracy
+14,14/Freestyle_1526985344400.csv,129,50,79,48,79,2,0,2,0,0.9844961240310077
+28,28/Freestyle_1527267722920.csv,121,36,85,36,77,0,8,2,6,0.9338842975206612
+33,33/Freestyle_1526813819256.csv,129,53,76,52,0,1,76,2,75,0.40310077519379844
+38,38/Freestyle_1526901159622.csv,129,15,114,15,112,0,2,2,0,0.9844961240310077
